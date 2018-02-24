@@ -1,0 +1,69 @@
+name: tabletop
+# version: 0.1.0
+author: Michael Borden
+maintainer: michael@quiet.space
+copyright: Michael Borden 2018
+license: BSD3
+
+github: taksuyu/tabletop
+
+ghc-options:
+  - -Wall
+  - -Wincomplete-uni-patterns
+  - -Wincomplete-record-updates
+  # - -Wmissing-import-lists
+
+_exe-ghc-options: &exe-ghc-options
+  - -threaded
+  - -rtsopts
+  - -with-rtsopts=-N
+
+dependencies:
+  - base
+  - aeson
+  - async
+  - backhand
+  - bytestring
+  - errors
+  - game-of-ur
+  - http-types
+  - lifted-base
+  - katip
+  - monad-control
+  - mtl
+  - random
+  - stm
+  - stm-containers
+  - text
+  - transformers
+  - transformers-base
+  - unagi-chan
+  - uuid
+  - vector
+  - wai
+  - wai-websockets
+  - warp
+  - websockets
+
+library:
+  source-dirs: src
+
+executables:
+  tabletop:
+    main: Main.hs
+    dependencies: tabletop
+    ghc-options: *exe-ghc-options
+
+# FIXME: I want there to be tests; I just don't know what I would end up
+# testing.
+#
+# tests:
+#   spec:
+#     main: Spec.hs
+#     source-dirs: test
+#     dependencies:
+#       - tabletop
+#       - hspec
+#       - hspec-wai
+#       - hspec-wai-json
+#     ghc-options: *exe-ghc-options

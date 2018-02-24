@@ -1,0 +1,26 @@
+version: 2
+jobs:
+  ubuntu-17.10:
+    docker:
+      - image: ubuntu:17.10
+    steps:
+      - run: curl -sSL https://get.haskellstack.org/ | sh
+      - run: stack --version
+        # TODO: We can cache git objects in the future.
+      - checkout
+      - restore_cache:
+          keys:
+            - stack-v1-{{ .Branch }}-{{ .Revision }}
+            - stack-v1-{{ .Branch }}
+            - stack-v1
+
+      - run: stack build --fast --pedantic --haddock
+      - save_cache:
+          key: stack-v1-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - "~/.stack"
+workflows:
+  version: 2
+  ghc:
+    jobs:
+      - ubuntu-17.10
