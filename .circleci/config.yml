@@ -1,10 +1,11 @@
 version: 2
 jobs:
-  ubuntu-17.10:
+  build:
     docker:
       - image: ubuntu:17.10
     steps:
-      - run: curl -sSL https://get.haskellstack.org/ | sh
+      - run: apt update && apt install -y wget
+      - run: wget -qO- https://get.haskellstack.org/ | sh
       - run: stack --version
         # TODO: We can cache git objects in the future.
       - checkout
@@ -19,8 +20,3 @@ jobs:
           key: stack-v1-{{ .Branch }}-{{ .Revision }}
           paths:
             - "~/.stack"
-workflows:
-  version: 2
-  ghc:
-    jobs:
-      - ubuntu-17.10
