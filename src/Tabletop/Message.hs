@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveGeneric, LambdaCase, OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module Tabletop.Message where
 

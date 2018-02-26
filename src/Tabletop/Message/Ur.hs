@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveGeneric, LambdaCase, StandaloneDeriving #-}
+{-# LANGUAGE DeriveGeneric, StandaloneDeriving #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Tabletop.Message.Ur where

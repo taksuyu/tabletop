@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleInstances, GeneralizedNewtypeDeriving, MultiParamTypeClasses,
-  StandaloneDeriving, TypeFamilies, UndecidableInstances #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, StandaloneDeriving,
+  TypeFamilies, UndecidableInstances #-}
 
 module Tabletop.Common where
 

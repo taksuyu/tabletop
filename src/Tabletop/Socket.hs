@@ -1,5 +1,4 @@
-{-# LANGUAGE DuplicateRecordFields, FlexibleContexts, LambdaCase, NamedFieldPuns,
-  OverloadedStrings, TupleSections, TemplateHaskell, TypeApplications #-}
+{-# LANGUAGE DuplicateRecordFields, FlexibleContexts, TemplateHaskell #-}
 
 module Tabletop.Socket where
 

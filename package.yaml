@@ -18,6 +18,14 @@ _exe-ghc-options: &exe-ghc-options
   - -rtsopts
   - -with-rtsopts=-N
 
+default-extensions:
+  - GeneralizedNewtypeDeriving
+  - LambdaCase
+  - NamedFieldPuns
+  - OverloadedStrings
+  - TupleSections
+  - TypeApplications
+
 dependencies:
   - base
   - aeson

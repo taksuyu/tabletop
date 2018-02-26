@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase, NamedFieldPuns, OverloadedStrings, TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Backhand.Modules.Ur where
 

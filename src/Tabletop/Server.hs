@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Tabletop.Server where
 
 import Control.Exception
