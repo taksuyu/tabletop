@@ -4,12 +4,9 @@
 module Tabletop.Message.Ur where
 
 import GHC.Generics
-  ( Generic )
 
 import Data.Aeson
-  ( FromJSON, ToJSON )
 import Data.Text
-  ( Text )
 import Game.Ur
 
 import Tabletop.Message

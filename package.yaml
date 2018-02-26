@@ -32,12 +32,9 @@ dependencies:
   - async
   - backhand
   - bytestring
-  - errors
   - game-of-ur
   - http-types
-  - lifted-base
   - katip
-  - monad-control
   - mtl
   - random
   - stm
@@ -46,6 +43,7 @@ dependencies:
   - transformers
   - transformers-base
   - unagi-chan
+  - unliftio
   - uuid
   - vector
   - wai

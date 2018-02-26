@@ -2,18 +2,17 @@
 
 module Tabletop.Socket where
 
-import Control.Concurrent.Lifted
-import Control.Concurrent.STM
-import Control.Exception.Lifted
 import Control.Monad
 import Control.Monad.Reader
 import Data.Aeson
--- import Data.Text
 import Katip
 import Network.HTTP.Types
 import Network.Wai
 import Network.Wai.Handler.WebSockets
 import Network.WebSockets
+import UnliftIO.Concurrent
+import UnliftIO.Exception
+import UnliftIO.STM
 
 import Backhand as B
 import Backhand.Modules.Ur
@@ -50,7 +49,7 @@ urGameHandler pconn = do
   conn <- liftIO $ acceptRequest pconn
   Env { bhand = TabletopBackhand { urChannelMap } } <- ask
   client <- liftIO $ newDefaultClient @UrTabletopResponse
-  channels <- liftIO $ newTVarIO @[UUID] []
+  channels <- newTVarIO []
   thread <- forkFinally
     (messageSender client conn)
     $ \ _ -> liftIO $ do
@@ -80,7 +79,7 @@ urGameHandler pconn = do
             ServiceMessage uuid service message -> do
               $(logTM) InfoS "Got ServiceMessage"
               channelExists <- liftIO $ isChannelPresent urChannelMap uuid
-              channelAlreadyJoined <- liftIO $ atomically $ do
+              channelAlreadyJoined <- atomically $ do
                 l <- readTVar channels
                 if uuid `elem` l
                   then pure True

@@ -3,13 +3,12 @@
 
 module Tabletop.Common where
 
-import Control.Monad.Base
+import qualified Data.Text as T
+
 import Control.Monad.IO.Class
 import Control.Monad.Reader
-import Control.Monad.Trans.Control
 import Katip as K
-
-import qualified Data.Text as T
+import UnliftIO
 
 import Backhand as B
 
@@ -19,6 +18,11 @@ newtype Tabletop m a = Tabletop { unTabletop :: ReaderT Env m a}
   deriving (Functor, Applicative, Monad, MonadIO)
 
 deriving instance (Monad m) => MonadReader Env (Tabletop m)
+
+instance MonadUnliftIO m => MonadUnliftIO (Tabletop m) where
+  askUnliftIO = Tabletop $
+    withUnliftIO $ \u ->
+      return (UnliftIO (unliftIO u . unTabletop))
 
 instance (MonadIO m) => K.Katip (Tabletop m) where
   getLogEnv = asks logEnv
@@ -33,25 +37,6 @@ instance (MonadIO m) => K.KatipContext (Tabletop m) where
   getKatipNamespace = asks logNamespace
 
   localKatipNamespace f (Tabletop m) = Tabletop (local (\s -> s { logNamespace = f (logNamespace s)}) m)
-
-deriving instance MonadTrans Tabletop
-
-instance MonadTransControl Tabletop where
-  type StT Tabletop a = StT (ReaderT Env) a
-
-  liftWith = defaultLiftWith Tabletop unTabletop
-
-  restoreT = defaultRestoreT Tabletop
-
-deriving instance MonadBase b m => MonadBase b (Tabletop m)
-
-instance MonadBaseControl b m => MonadBaseControl b (Tabletop m) where
-  type StM (Tabletop m) a = ComposeSt Tabletop m a
-
-  liftBaseWith = defaultLiftBaseWith
-
-  restoreM = defaultRestoreM
-
 
 data Env = Env
   { bhand :: TabletopBackhand
