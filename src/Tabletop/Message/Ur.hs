@@ -15,7 +15,7 @@ import Tabletop.Message
 data Player
   = PlayerBlack
   | PlayerWhite
-  deriving (Eq, Generic, Show)
+  deriving (Enum, Eq, Ord, Generic, Show)
 
 instance FromJSON Player
 instance ToJSON Player
