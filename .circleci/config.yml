@@ -9,14 +9,15 @@ jobs:
       - run: stack --version
         # TODO: We can cache git objects in the future.
       - checkout
+
       - restore_cache:
           keys:
-            - stack-v1-{{ .Branch }}-{{ .Revision }}
-            - stack-v1-{{ .Branch }}
-            - stack-v1
+            - stack-v1-ghc-8.2.2-{{ arch }}-{{ .Branch }}-{{ .Revision }}
+            - stack-v1-ghc-8.2.2-{{ arch }}-{{ .Branch }}
+            - stack-v1-ghc-8.2.2-{{ arch }}
 
       - run: stack build --fast --pedantic --haddock
       - save_cache:
-          key: stack-v1-{{ .Branch }}-{{ .Revision }}
+          key: stack-v1-ghc-8.2.2-{{ arch }}-{{ .Branch }}-{{ .Revision }}
           paths:
             - "~/.stack"
