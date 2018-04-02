@@ -2,16 +2,17 @@ resolver: lts-10.5
 
 packages:
   - .
-  - location:
-      git: https://github.com/quietspace/backhand.git
-      commit: 0bb62222e60fc114ff679158fb56c955c6521a33
-    subdirs:
-      - backhand
-    extra-dep: true
-  - location:
-      git: https://github.com/taksuyu/game-of-ur.git
-      commit: 965bd4408388be631d3dd5c066bcc96bc35f8c4a
-    extra-dep: true
 
 extra-deps:
   - unagi-chan-0.4.0.0
+
+  - git: https://github.com/quietspace/backhand.git
+    commit: 0bb62222e60fc114ff679158fb56c955c6521a33
+    subdirs:
+      - backhand
+  - git: https://github.com/taksuyu/game-of-ur.git
+    commit: 21e49688b0cfd60cc732aa3849546b6a3a3543fa
+  - git: https://github.com/Soostone/katip.git
+    commit: c14b93cc3697baed608395e7a5aef0c78fb45666
+    subdirs:
+      - katip
