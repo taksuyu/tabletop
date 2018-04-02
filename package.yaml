@@ -19,6 +19,7 @@ _exe-ghc-options: &exe-ghc-options
   - -with-rtsopts=-N
 
 default-extensions:
+  - DeriveGeneric
   - GeneralizedNewtypeDeriving
   - LambdaCase
   - NamedFieldPuns
@@ -32,9 +33,12 @@ dependencies:
   - async
   - backhand
   - bytestring
+  - containers
   - game-of-ur
+  - generic-lens
   - http-types
   - katip
+  - microlens
   - mtl
   - random
   - stm
@@ -60,16 +64,14 @@ executables:
     dependencies: tabletop
     ghc-options: *exe-ghc-options
 
-# FIXME: I want there to be tests; I just don't know what I would end up
-# testing.
-#
-# tests:
-#   spec:
-#     main: Spec.hs
-#     source-dirs: test
-#     dependencies:
-#       - tabletop
-#       - hspec
-#       - hspec-wai
-#       - hspec-wai-json
-#     ghc-options: *exe-ghc-options
+tests:
+  tabletop-test:
+    main: Test.hs
+    source-dirs: test
+    dependencies:
+      - tabletop
+      - hedgehog
+      - unique
+    ghc-options: *exe-ghc-options
+    default-extensions:
+      - TemplateHaskell

@@ -16,7 +16,8 @@ jobs:
             - stack-v1-ghc-8.2.2-{{ arch }}-{{ .Branch }}
             - stack-v1-ghc-8.2.2-{{ arch }}
 
-      - run: stack build --fast --pedantic --haddock
+      - run: stack build --fast --pedantic --haddock --test
+
       - save_cache:
           key: stack-v1-ghc-8.2.2-{{ arch }}-{{ .Branch }}-{{ .Revision }}
           paths:

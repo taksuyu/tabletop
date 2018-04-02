@@ -1,87 +1,90 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DataKinds, TemplateHaskell #-}
 
 module Backhand.Modules.Ur where
 
-import Backhand
-import Control.Concurrent as CC
-import Control.Concurrent.Async
-import Control.Concurrent.Chan.Unagi.Bounded as UC
-import Control.Concurrent.STM
-import Control.Monad.IO.Class
+import GHC.Generics (Generic)
+
+import qualified Control.Concurrent.Chan.Unagi.Bounded as UC
+import qualified Data.Map as Map
+import qualified Data.String as Str
+import qualified STMContainers.Map as SM
+
+import Control.Applicative
 import Control.Monad.Reader
--- import Data.Text
+import Data.Generics.Product
 import Data.UUID as U
 import Katip
+import Lens.Micro
+import UnliftIO
+import UnliftIO.Concurrent
+
+import Backhand
 import Game.Ur
-import qualified STMContainers.Map as M
 
 import Tabletop.Common
 import Tabletop.Message
 import Tabletop.Message.Ur
 
-data Game = Game
-  { playerBlack :: Maybe Unique
-  , playerWhite :: Maybe Unique
-  , board :: Board
+-- | I'll probably move this to it's own module in the future or make a generic
+-- version to be used in `Backhand`.
+type TabletopService r a = ReaderT r (KatipContextT IO) a
+
+data UrGameEnv = UrGameEnv
+  { timerChannel :: Chan ()
+  , incomingMessages :: UC.OutChan (Message UrMessage)
+  , backhandClients :: Clients UrTabletopResponse
+  , game :: TVar Game
   }
 
--- NOTE: Sends message over connection if the channel exists within the backhand client map.
+-- TODO: Replace each individual player with a Map
+data Game = Game
+  { players :: Map.Map Player (Maybe Unique)
+  , board :: Board
+  } deriving (Eq, Generic)
+
+-- NOTE: Sends message over connection if the channel exists within the backhand
+-- client map.
 returnServerMessage :: Applicative f => (c -> m -> f ()) -> Maybe c -> m -> f ()
 returnServerMessage = maybe (void . pure)
 
-joinPlayerMessage :: Unique -> TVar Game -> Player -> STM UrResponse
-joinPlayerMessage u game player = do
+joinPlayerMessage :: MonadIO m => Unique -> TVar Game -> Player -> m UrResponse
+joinPlayerMessage u game player = atomically $ do
   gameState <- readTVar game
 
-  -- If our players already exist we don't want to override them.
-  let (s, newGame) =
-        case player of
-          PlayerBlack ->
-            case playerBlack gameState of
-              Nothing ->
-                ( JoinSuccess player
-                , Just $ gameState { playerBlack = Just u } )
-              _ ->
-                ( JoinFailure "Player Black is already taken"
-                , Nothing )
-          PlayerWhite ->
-            case playerWhite gameState of
-              Nothing ->
-                ( JoinSuccess player
-                , Just $ gameState { playerWhite = Just u } )
-              _ ->
-                ( JoinFailure "Player White is already taken"
-                , Nothing )
+  let gameState' = gameState & field @"players" %~ Map.insertWith (flip (<|>)) player (Just u)
+      changed = gameState' /= gameState
 
-  -- Return s after we optionally set the new game state over Maybe
-  pure (const s) <*> pure (fmap (writeTVar game) newGame)
+  when changed $
+    writeTVar game gameState'
 
-movePlayerMessage :: Unique -> TVar Game -> Int -> Int -> STM UrResponse
-movePlayerMessage u game n newDice = do
+  if changed
+    then pure $ JoinSuccess player
+    else pure $ JoinFailure $ (Str.fromString . show) player `mappend` "was already taken"
+
+movePlayerMessage :: Unique -> TVar Game -> Int -> Int -> TabletopService UrGameEnv  UrResponse
+movePlayerMessage u game n newDice = atomically $ do
   gameState@Game{ board } <- readTVar game
 
   -- Check the player's turn and apply the move; passing back the message with
   -- the result if any.
-  let (s, newGame) =
-        if currentPlayer u gameState
-        then
-          case move n board of
-            Just a ->
-              let newBoardState = nextBoard newDice a
-              in
-              ( MoveSuccess newBoardState
-              , Just $ gameState { board = newBoardState }
-              )
-            Nothing ->
-              ( MoveFailure "Not a valid move", Nothing )
-        else
-          (MoveFailure "Not player's turn", Nothing )
+  --
+  -- NOTE: We could probably make this a little easier to understand with lens
+  fmap fst . traverse (traverse (writeTVar game)) $
+    if currentPlayer u gameState
+    then
+      case move n board of
+        Just a ->
+          let newBoardState = nextBoard newDice a
+          in ( MoveSuccess newBoardState
+             , Just $ gameState { board = newBoardState }
+             )
+        Nothing ->
+          ( MoveFailure "Not a valid move", Nothing )
+    else
+      ( MoveFailure "Not player's turn", Nothing )
 
-  maybe (pure ()) (writeTVar game) newGame
-  pure s
-
-passPlayerMessage :: Unique -> TVar Game -> Int -> STM UrResponse
-passPlayerMessage u game newDice = do
+passPlayerMessage :: Unique -> TVar Game -> Int -> TabletopService UrGameEnv  UrResponse
+passPlayerMessage u game newDice = atomically $ do
   gameState@Game{ board = board@Board { turn } } <- readTVar game
   if currentPlayer u gameState
     then do
@@ -90,94 +93,91 @@ passPlayerMessage u game newDice = do
     else
       pure $ PassFailure "Not the player's turn"
 
-urGameService :: Chan () -> OutChan (Message UrMessage) -> Clients UrTabletopResponse -> IO ()
-urGameService timerChan outChan rmap = do
-  board <- newBoard
-  game <- newTVarIO $ Game Nothing Nothing board
-  urGameLoop timerChan outChan rmap game
-
-urGameLoop :: Chan () -> OutChan (Message UrMessage) -> Clients UrTabletopResponse -> TVar Game -> IO ()
-urGameLoop timerChan outChan clients game = do
-  Message u message <- UC.readChan outChan
-  newDice <- newDiceRoll
-  inChan <- atomically . M.lookup u $ unClients clients
-  putStrLn "Got Message Ur"
+urGameService :: TabletopService UrGameEnv ()
+urGameService = do
+  UrGameEnv { timerChannel, incomingMessages, backhandClients, game } <- ask
+  Message u message <- liftIO $ UC.readChan incomingMessages
+  newDice <- liftIO $ newDiceRoll
+  inChan <- atomically . SM.lookup u $ unClients backhandClients
   case message of
     Join player ->
-      atomically (joinPlayerMessage u game player)
-      >>= returnServerMessage
+      joinPlayerMessage u game player >>= returnServerMessage
         (\ chan reply -> case reply of
-            JoinSuccess p -> do
-              -- FIXME: Client gets both messages
-              UC.writeChan chan $ ServiceResponse reply
-              broadcastOthers u clients $ ServiceResponse (JoinSuccessOther p)
-            _ ->
-              UC.writeChan chan $ ServiceResponse reply
+            JoinSuccess p ->
+              liftIO $ do
+                UC.writeChan chan $ ServiceResponse reply
+                broadcastOthers u backhandClients $ ServiceResponse (JoinSuccessOther p)
+            JoinFailure _ ->
+              liftIO . UC.writeChan chan $ ServiceResponse reply
+            response ->
+              $(logTM) ErrorS $ "Unexpected response from joinPlayerMessage: " `mappend` ls (show response)
         )
         inChan
     Move n ->
-      atomically (movePlayerMessage u game n newDice)
-      >>= returnServerMessage
+      movePlayerMessage u game n newDice >>= returnServerMessage
         (\ chan reply -> case reply of
             MoveSuccess _ ->
-              broadcast clients $ ServiceResponse reply
-            _ ->
-              UC.writeChan chan $ ServiceResponse reply
+              liftIO . broadcast backhandClients $ ServiceResponse reply
+            MoveFailure _ ->
+              liftIO . UC.writeChan chan $ ServiceResponse reply
+            response ->
+              $(logTM) ErrorS $ "Unexpected response from movePlayerMessage: " `mappend` ls (show response)
         )
         inChan
     PassTurn ->
-      atomically (passPlayerMessage u game newDice)
-      >>= returnServerMessage
+      passPlayerMessage u game newDice >>= returnServerMessage
         (\ chan reply -> case reply of
             PassSuccess _ ->
-              broadcast clients $ ServiceResponse reply
-            _ ->
-              UC.writeChan chan $ ServiceResponse reply
+              liftIO . broadcast backhandClients $ ServiceResponse reply
+            PassFailure _ ->
+              liftIO . UC.writeChan chan $ ServiceResponse reply
+            response ->
+              $(logTM) ErrorS $ "Unexpected response from passPlayerMessage: " `mappend` ls (show response)
         )
         inChan
     GetCurrentGame -> do
       Game{ board } <- atomically $ readTVar game
-      returnServerMessage UC.writeChan inChan $ ServiceResponse (CurrentGame board)
+      liftIO . returnServerMessage UC.writeChan inChan $ ServiceResponse (CurrentGame board)
 
   -- Check if the game is finished
-  currentGame <- atomically $ readTVar game
-  case currentGame of
+  atomically (readTVar game) >>= \case
     Game{ board = Board{ black = Side{ scored = 7 } } } ->
-      returnServerMessage UC.writeChan inChan $ ServiceResponse (PlayerHasWon PlayerBlack)
+      liftIO . returnServerMessage UC.writeChan inChan $ ServiceResponse (PlayerHasWon PlayerBlack)
     Game{ board = Board{ white = Side{ scored = 7 } } } ->
-      returnServerMessage UC.writeChan inChan $ ServiceResponse (PlayerHasWon PlayerWhite)
+      liftIO . returnServerMessage UC.writeChan inChan $ ServiceResponse (PlayerHasWon PlayerWhite)
     _ -> do
-      CC.writeChan timerChan ()  -- Tell our timer to restart
-      urGameLoop timerChan outChan clients game
+      writeChan timerChannel ()  -- Tell our timer to restart
+      urGameService
 
 -- TODO: Maybe this function should be renamed?
 currentPlayer :: Unique -> Game -> Bool
-currentPlayer u Game{ playerBlack, playerWhite, board = Board{ turn } } =
-     Just u == playerBlack && turn == Black
-  || Just u == playerWhite && turn == White
+currentPlayer u Game{ players, board = Board{ turn } } =
+     Just u == join (Map.lookup PlayerBlack players) && turn == Black
+  || Just u == join (Map.lookup PlayerWhite players) && turn == White
 
 urGameChannel :: Tabletop IO ChannelInfo
 urGameChannel = do
-  Env { bhand = TabletopBackhand { urChannelMap } } <- ask
-  chanInfo@ChannelInfo { channelUUID } <- liftIO $ do
-    (uuid, channel@Channel{ services, clients }) <- newChannel
-    (moduleText, unagi) <- newService "UrService"
+  Env { bhand = TabletopBackhand { urChannelMap }, logEnv, logContext, logNamespace } <- ask
+  chanInfo@ChannelInfo { channelUUID } <- do
+    (uuid, channel@Channel{ services, clients }) <- liftIO $ newChannel
+    (moduleText, unagi) <- liftIO $ newService "UrService"
     atomically $ do
-      M.insert (inChan unagi) moduleText (unServices services)
+      SM.insert (inChan unagi) moduleText (unServices services)
       addChannel uuid channel urChannelMap
 
-    timerChan <- CC.newChan
-    void . forkFinally (race (timer timerChan) (urGameService timerChan (outChan unagi) clients))
-      $ \ _ -> atomically $ M.delete uuid (unChannels urChannelMap)
+    timerChan <- newChan
+    game <- liftIO $ (newTVarIO . Game Map.empty) =<< newBoard
+    void . liftIO . runKatipContextT logEnv logContext logNamespace $ forkFinally
+      (race (timer timerChan)
+        (runReaderT urGameService (UrGameEnv timerChan (outChan unagi) clients game)))
+      (\_ -> atomically $ SM.delete uuid (unChannels urChannelMap))
     pure $ ChannelInfo uuid [moduleText]
   $(logTM) InfoS $ "Started game session: " `mappend` ls (U.toText channelUUID)
   pure chanInfo
   where
     -- Delay 30 minutes while waiting for a message from the service to restart
     -- the timer.
-    timer chan = race (threadDelay 1800000000) (CC.readChan chan)
-      >>= \case
-        Right _ -> timer chan
-        Left _ ->
-          -- TODO? Should we notify clients that the service is shutting down
-          pure ()
+    timer chan = race (threadDelay 1800000000) (readChan chan) >>= \case
+      Right _ -> timer chan
+      -- TODO? Should we notify clients that the service is shutting down
+      Left _ -> pure ()

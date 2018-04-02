@@ -32,7 +32,7 @@ tabletop = do
   return $ websocketsOr defaultConnectionOptions (tabletopWS env) backupApp
     where
       tabletopWS env pendingConn =
-        case requestPath . pendingRequest $ pendingConn of
+        case requestPath $ pendingRequest pendingConn of
           "/games/ur" ->
             -- Maybe there is an easier way to embed another reader.
             runReaderT (unTabletop $ urGameHandler pendingConn) env
