@@ -4,6 +4,7 @@ jobs:
     docker:
       - image: ubuntu:17.10
     steps:
+      - run: locale
       - run: apt update && apt install -y wget
       - run: wget -qO- https://get.haskellstack.org/ | sh
       - run: stack --version
