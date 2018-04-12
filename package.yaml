@@ -40,11 +40,15 @@ dependencies:
   - filepath
   - game-of-ur
   - generic-lens
+  - hedis
   - http-types
   - katip
   - microlens-platform
   - mtl
   - random
+  - serversession
+  - serversession-backend-redis
+  - serversession-frontend-wai
   - stm
   - stm-containers
   - text
@@ -53,8 +57,10 @@ dependencies:
   - unagi-chan
   - unliftio
   - uuid
+  - vault
   - vector
   - wai
+  - wai-session
   - wai-websockets
   - warp
   - websockets
