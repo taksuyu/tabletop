@@ -24,7 +24,7 @@ default-extensions:
   - LambdaCase
   - NamedFieldPuns
   - OverloadedStrings
-  # - PartialTypeSignatures
+  - TemplateHaskell
   - TupleSections
   - TypeApplications
 

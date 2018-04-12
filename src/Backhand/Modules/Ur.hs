@@ -1,4 +1,4 @@
-{-# LANGUAGE DataKinds, TemplateHaskell #-}
+{-# LANGUAGE DataKinds #-}
 
 module Backhand.Modules.Ur where
 
