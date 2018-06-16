@@ -5,11 +5,11 @@ module Backhand.Modules.Ur where
 import GHC.Generics (Generic)
 
 import qualified Control.Concurrent.Chan.Unagi.Bounded as UC
+import qualified Data.ByteString as BS
 import qualified Data.Map as Map
 import qualified Data.String as Str
 import qualified STMContainers.Map as SM
 
-import Control.Applicative
 import Control.Monad.Reader
 import Data.Generics.Product
 import Data.UUID as U
@@ -29,16 +29,23 @@ import Tabletop.Message.Ur
 -- version to be used in `Backhand`.
 type TabletopService r a = ReaderT r (KatipContextT IO) a
 
+runGenericGame :: KatipContextT IO a -> Tabletop IO a
+runGenericGame fn = do
+  env <- ask
+  let logEnv'       = env ^. logEnv
+      logContext'   = env ^. logContext
+      logNamespace' = env ^. logNamespace
+  liftIO (runKatipContextT logEnv' logContext' logNamespace' fn)
+
 data UrGameEnv = UrGameEnv
   { timerChannel :: Chan ()
-  , incomingMessages :: UC.OutChan (Message UrMessage)
+  , incomingMessages :: UC.OutChan (TMessager UrMessage)
   , backhandClients :: Clients UrTabletopResponse
   , game :: TVar Game
   }
 
--- TODO: Replace each individual player with a Map
 data Game = Game
-  { players :: Map.Map Player (Maybe Unique)
+  { players :: Map.Map Player (Unique, BS.ByteString)
   , board :: Board
   } deriving (Eq, Generic)
 
@@ -47,11 +54,15 @@ data Game = Game
 returnServerMessage :: Applicative f => (c -> m -> f ()) -> Maybe c -> m -> f ()
 returnServerMessage = maybe (void . pure)
 
-joinPlayerMessage :: MonadIO m => Unique -> TVar Game -> Player -> m UrResponse
-joinPlayerMessage u game player = atomically $ do
+joinPlayerMessage :: MonadIO m => Unique -> BS.ByteString -> TVar Game -> Player -> m UrResponse
+joinPlayerMessage u sessionId game player = atomically $ do
   gameState <- readTVar game
 
-  let gameState' = gameState & field @"players" %~ Map.insertWith (flip (<|>)) player (Just u)
+  let checkSession new@(_, s1) old@(_, s2)
+        | s1 == s2  = new
+        | otherwise = old
+
+      gameState' = gameState & field @"players" %~ Map.insertWith checkSession player (u, sessionId)
       changed = gameState' /= gameState
 
   when changed $
@@ -61,6 +72,7 @@ joinPlayerMessage u game player = atomically $ do
     then pure $ JoinSuccess player
     else pure $ JoinFailure $ (Str.fromString . show) player `mappend` "was already taken"
 
+-- TODO: Property to test returns are only MoveSuccess or MoveFailure
 movePlayerMessage :: Unique -> TVar Game -> Int -> Int -> TabletopService UrGameEnv  UrResponse
 movePlayerMessage u game n newDice = atomically $ do
   gameState@Game{ board } <- readTVar game
@@ -83,6 +95,7 @@ movePlayerMessage u game n newDice = atomically $ do
     else
       ( MoveFailure "Not player's turn", Nothing )
 
+-- TODO: Property to test returns are only PassSuccess or PassFailure
 passPlayerMessage :: Unique -> TVar Game -> Int -> TabletopService UrGameEnv  UrResponse
 passPlayerMessage u game newDice = atomically $ do
   gameState@Game{ board = board@Board { turn } } <- readTVar game
@@ -93,15 +106,17 @@ passPlayerMessage u game newDice = atomically $ do
     else
       pure $ PassFailure "Not the player's turn"
 
+-- TODO? We may be able to simplfy and remove error messages if we adopt a
+-- Either interface, however this may require that our encoding be changed.
 urGameService :: TabletopService UrGameEnv ()
 urGameService = do
   UrGameEnv { timerChannel, incomingMessages, backhandClients, game } <- ask
-  Message u message <- liftIO $ UC.readChan incomingMessages
+  TMessager u sessionId message <- liftIO $ UC.readChan incomingMessages
   newDice <- liftIO $ newDiceRoll
   inChan <- atomically . SM.lookup u $ unClients backhandClients
   case message of
     Join player ->
-      joinPlayerMessage u game player >>= returnServerMessage
+      joinPlayerMessage u sessionId game player >>= returnServerMessage
         (\ chan reply -> case reply of
             JoinSuccess p ->
               liftIO $ do
@@ -152,8 +167,8 @@ urGameService = do
 -- TODO: Maybe this function should be renamed?
 currentPlayer :: Unique -> Game -> Bool
 currentPlayer u Game{ players, board = Board{ turn } } =
-     Just u == join (Map.lookup PlayerBlack players) && turn == Black
-  || Just u == join (Map.lookup PlayerWhite players) && turn == White
+     Just u == fmap fst (Map.lookup PlayerBlack players) && turn == Black
+  || Just u == fmap fst (Map.lookup PlayerWhite players) && turn == White
 
 urGameChannel :: Tabletop IO ChannelInfo
 urGameChannel = do
@@ -167,7 +182,7 @@ urGameChannel = do
 
     timerChan <- newChan
     game <- liftIO $ (newTVarIO . Game Map.empty) =<< newBoard
-    void . liftIO . runKatipContextT logEnv logContext logNamespace $ forkFinally
+    void . runGenericGame $ forkFinally
       (race (timer timerChan)
         (runReaderT urGameService (UrGameEnv timerChan (outChan unagi) clients game)))
       (\_ -> atomically $ SM.delete uuid (unChannels urChannels))

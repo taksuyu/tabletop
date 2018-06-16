@@ -24,6 +24,7 @@ default-extensions:
   - LambdaCase
   - NamedFieldPuns
   - OverloadedStrings
+  - StandaloneDeriving
   - TemplateHaskell
   - TupleSections
   - TypeApplications
@@ -36,31 +37,31 @@ dependencies:
   - bytestring
   - config-ini
   - containers
+  - cookie
   - directory
   - filepath
   - game-of-ur
   - generic-lens
   - hedis
+  - http-date
   - http-types
   - katip
   - microlens-platform
   - mtl
+  - path-pieces
   - random
   - serversession
   - serversession-backend-redis
-  - serversession-frontend-wai
   - stm
   - stm-containers
   - text
-  - transformers
-  - transformers-base
+  - text-conversions
+  - time
   - unagi-chan
   - unliftio
   - uuid
-  - vault
   - vector
   - wai
-  - wai-session
   - wai-websockets
   - warp
   - websockets

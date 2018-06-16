@@ -6,13 +6,13 @@ import Control.Monad
 import Control.Monad.Reader
 import Data.Aeson
 import Katip
+import Lens.Micro.Platform
 import Network.HTTP.Types
-import Network.Wai
+import Network.Wai as Wai
 import Network.Wai.Handler.WebSockets
 import Network.WebSockets
+import UnliftIO
 import UnliftIO.Concurrent
-import UnliftIO.Exception
-import UnliftIO.STM
 
 import Backhand as B
 import Backhand.Modules.Ur
@@ -20,64 +20,56 @@ import Backhand.Modules.Ur
 import Tabletop.Common
 import Tabletop.Message
 import Tabletop.Message.Ur
-
-newTabletopBackhand :: IO TabletopBackhand
-newTabletopBackhand =
-  pure TabletopBackhand <*> newChannelsIO
+import Tabletop.Session
 
 tabletop :: Tabletop IO Application
 tabletop = do
-  $(logTM) NoticeS "Tabletop is starting!"
   env <- ask
-  return $ websocketsOr defaultConnectionOptions (tabletopWS env) backupApp
-    where
-      tabletopWS env pendingConn =
-        case requestPath $ pendingRequest pendingConn of
-          "/games/ur" ->
-            -- Maybe there is an easier way to embed another reader.
-            runReaderT (unTabletop $ urGameHandler pendingConn) env
-          -- "/games/chess" -> chessGameHandler (chessChannelMap bhand) pendingConn
-          _ ->
-            rejectRequest pendingConn "Not a valid path."
+  return $ \request respond ->
+    let app pendingConnection =
+          case requestPath $ pendingRequest pendingConnection of
+            "/games/ur" -> do
+              sessionConn <- runReaderT (unTabletop $ checkSession request pendingConnection) env
+              runReaderT (unTabletop $ urGameHandler sessionConn) env
+            _ -> rejectRequest pendingConnection "Not a valid path."
 
-      backupApp :: Application
-      backupApp _ respond =
-        respond $ responseLBS status400 [] "Not a WebSocket request"
+    in case websocketsApp defaultConnectionOptions app request of
+      Nothing  -> respond (responseLBS status400 [] "Not a WebSocket request")
+      Just res -> respond res
 
-urGameHandler :: PendingConnection -> Tabletop IO ()
-urGameHandler pconn = do
-  conn <- liftIO $ acceptRequest pconn
-  Env { bhand = TabletopBackhand { urChannels } } <- ask
+urGameHandler :: SessionConn -> Tabletop IO ()
+urGameHandler SessionConn{ sessionId, connection } = do
+  env <- ask
+
   client <- liftIO $ newDefaultClient @UrTabletopResponse
   channels <- newTVarIO []
   thread <- forkFinally
-    (messageSender client conn)
+    (messageSender client connection)
     $ \ _ -> liftIO $ do
       chans <- atomically $ readTVar channels
       mapM_ (leaveChannel urChannels client) chans
-  liftIO $ forkPingThread conn 30
-  readConnection thread $ loopRetrieveData channels client thread conn
-  where
-    readConnection t fn = fn `catch` \case
-      CloseRequest _ _ -> killThread t
-      ConnectionClosed -> killThread t
-      _ -> fn
 
-    loopRetrieveData :: TVar [UUID] -> Client UrTabletopResponse -> ThreadId -> Connection -> Tabletop IO ()
-    loopRetrieveData channels client@Client{ unique } thread conn = do
-      Env { bhand = TabletopBackhand { urChannels } } <- ask
-      bstring <- liftIO $ receiveData conn
+  readFromConnection thread $ loopRetrieveData channels client thread
+  where
+    -- FIXME: We need to separate this out from one specific handler and
+    -- generalize it for our games.
+    loopRetrieveData :: TVar [UUID] -> Client UrTabletopResponse -> ThreadId -> Tabletop IO ()
+    loopRetrieveData channels client@Client{ unique } thread = do
+      env <- ask
+      let channelMap = env ^. urChannels
+
+      bstring <- liftIO $ receiveData connection
       case decode' @UrTabletopMessage bstring of
         Just msg ->
           case msg of
             SystemMessage message -> do
-              $(logTM) InfoS "Got SystemMessage"
+              $(logTM) DebugS "Got SystemMessage"
               case message of
                 CreateGame ->
                   urGameChannel
-                    >>= liftIO . sendTextData conn . encode @UrTabletopResponse . SystemResponse
+                    >>= liftIO . sendTextData connection . encode @UrTabletopResponse . SystemResponse
             ServiceMessage uuid service message -> do
-              $(logTM) InfoS "Got ServiceMessage"
+              $(logTM) DebugS "Got ServiceMessage"
               channelExists <- liftIO $ isChannelPresent urChannels uuid
               channelAlreadyJoined <- atomically $ do
                 l <- readTVar channels
@@ -93,20 +85,30 @@ urGameHandler pconn = do
                 >>= \case
                   Left err ->
                     -- FIXME: We could send a much better error message
-                    sendTextData conn (encode err)
+                    sendTextData connection (encode err)
                   _ ->
                     pure ()
         _ ->
-          $(logTM) InfoS "Didn't recieve a proper message"
+          $(logTM) DebugS "Didn't recieve a proper message"
 
-      -- If we encountered an error then readConnection would catch us, so we'll
+      -- If we encountered an error then readFromConnection would catch us, so we'll
       -- continue on regardless of what happens.
-      loopRetrieveData channels client thread conn
+      loopRetrieveData channels client thread
 
-    messageSender :: ToJSON a => Client a -> Connection -> Tabletop IO ()
-    messageSender client conn = forever $ do
-      liftIO $ sendTextData conn . encode =<< readWith client
-      $(logTM) InfoS "Sent message back over websocket"
+-- | We want to respond to the client as we get messages from the backhand
+-- services. Currently this just sends back whatever we get from the service.
+messageSender :: ToJSON a => Client a -> Connection -> Tabletop IO ()
+messageSender client conn = forever $ do
+  liftIO $ sendTextData conn . encode =<< readWith client
+  $(logTM) DebugS "Sent message back over websocket"
 
-chessGameHandler :: PendingConnection -> IO ()
-chessGameHandler _ = pure ()
+-- | As we work with our WebSocket connection we may error out due to the client
+-- closing the connection and we want to properly clean up when it does. If we
+-- get a separate error we'll report it and continue the WebSocket loop.
+readFromConnection :: (MonadUnliftIO m, KatipContext m) => ThreadId -> m () -> m ()
+readFromConnection t fn = fn `catch` \case
+  CloseRequest _ _ -> killThread t
+  ConnectionClosed -> killThread t
+  err -> do
+    $(logTM) ErrorS (showLS err)
+    fn

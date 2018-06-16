@@ -1,10 +1,12 @@
 module Tabletop.Server where
 
-import Control.Exception
+import qualified Backhand as B
+
 import Control.Monad.Reader
 import Katip
 import Network.Wai.Handler.Warp
 import System.IO
+import UnliftIO
 
 import Tabletop.Common
 import Tabletop.Config
@@ -13,7 +15,6 @@ import Tabletop.Socket
 -- TODO: Everything should run within Katip for proper logging.
 startTabletop :: IO ()
 startTabletop = do
-  ttBackhand <- newTabletopBackhand
   handleScribe <- mkHandleScribe ColorIfTerminal stdout InfoS V2
   let makeLogEnv = registerScribe "stdout" handleScribe defaultScribeSettings
         =<< initLogEnv "Tabletop" "product"

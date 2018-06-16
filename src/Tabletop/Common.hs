@@ -3,11 +3,15 @@
 
 module Tabletop.Common where
 
+import qualified Data.ByteString as BS
 import qualified Data.Text as T
 
 import Control.Monad.IO.Class
 import Control.Monad.Reader
+
+import Data.Word
 import Katip
+import Lens.Micro.Platform
 import UnliftIO
 
 import Backhand
@@ -15,7 +19,7 @@ import Backhand
 import Tabletop.Config
 import Tabletop.Message.Ur
 
-newtype Tabletop m a = Tabletop { unTabletop :: ReaderT Env m a }
+newtype Tabletop m a = Tabletop { unTabletop :: ReaderT Env m a}
   deriving (Functor, Applicative, Monad, MonadIO)
 
 deriving instance (Monad m) => MonadReader Env (Tabletop m)
@@ -27,23 +31,23 @@ instance MonadUnliftIO m => MonadUnliftIO (Tabletop m) where
 
 instance (MonadIO m) => Katip (Tabletop m) where
   getLogEnv =
-    asks logEnv
+    view logEnv
 
   localLogEnv f (Tabletop m) =
-    Tabletop (local (\s -> s { logEnv = f (logEnv s)}) m)
+    Tabletop (local (over logEnv f) m)
 
 instance (MonadIO m) => KatipContext (Tabletop m) where
   getKatipContext =
-    asks logContext
+    view logContext
 
   localKatipContext f (Tabletop m) =
-    Tabletop (local (\s -> s { logContext = f (logContext s)}) m)
+    Tabletop (local (over logContext f) m)
 
   getKatipNamespace =
-    asks logNamespace
+    view logNamespace
 
   localKatipNamespace f (Tabletop m) =
-    Tabletop (local (\s -> s { logNamespace = f (logNamespace s)}) m)
+    Tabletop (local (over logNamespace f) m)
 
 data Env = Env
   { bhand :: TabletopBackhand
