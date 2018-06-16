@@ -1,0 +1,1 @@
+--command "stack ghci --test --ghci-options=-fno-break-on-exception --ghci-options=-fno-break-on-error --ghci-options=-v1 --ghci-options=-ferror-spans --ghci-options=-j --main-is=tabletop:test:tabletop-test" -T :main
