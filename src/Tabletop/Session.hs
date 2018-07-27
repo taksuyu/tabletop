@@ -33,6 +33,7 @@ checkSession request pendingConnection = do
   env <- ask
 
   redisConnection <- initRedis
+  $(logTM) DebugS "Redis connection started"
 
   -- TODO: We currently only use sessions for rejoining games, but we should
   -- consider timeouts in the future.
@@ -67,13 +68,13 @@ checkSession request pendingConnection = do
       let checkAuthId sessCount =
             let dSession = decomposeSession sessCount sessionData
             in case dsAuthId $ dSession of
-               Just _ -> pure $ Session @SessionMap
+               Nothing -> pure $ Session @SessionMap
                  sessionId
                  (Just . TC.unUTF8 $ TC.convertText sessCount)
                  (dsDecomposed dSession)
                  now
                  now
-               Nothing -> do
+               Just _ -> do
                  n <- increment
                  checkAuthId n
 

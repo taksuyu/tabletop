@@ -74,6 +74,7 @@ executables:
     main: Main.hs
     dependencies: tabletop
     ghc-options: *exe-ghc-options
+    other-modules: []
 
 tests:
   tabletop-test:

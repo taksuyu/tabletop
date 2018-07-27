@@ -28,9 +28,10 @@ tabletop = do
   return $ \request respond ->
     let app pendingConnection =
           case requestPath $ pendingRequest pendingConnection of
-            "/games/ur" -> do
-              sessionConn <- runReaderT (unTabletop $ checkSession request pendingConnection) env
-              runReaderT (unTabletop $ urGameHandler sessionConn) env
+            "/games/ur" -> flip runReaderT env . unTabletop $ do
+              $(logTM) DebugS "Detected Ur WebSocket connection"
+              sessionConn <- checkSession request pendingConnection
+              urGameHandler sessionConn
             _ -> rejectRequest pendingConnection "Not a valid path."
 
     in case websocketsApp defaultConnectionOptions app request of
