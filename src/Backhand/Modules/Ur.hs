@@ -14,7 +14,7 @@ import Control.Monad.Reader
 import Data.Generics.Product
 import Data.UUID as U
 import Katip
-import Lens.Micro
+import Lens.Micro.Platform
 import UnliftIO
 import UnliftIO.Concurrent
 

@@ -24,6 +24,7 @@ default-extensions:
   - LambdaCase
   - NamedFieldPuns
   - OverloadedStrings
+  # - PartialTypeSignatures
   - TupleSections
   - TypeApplications
 
@@ -33,12 +34,14 @@ dependencies:
   - async
   - backhand
   - bytestring
+  - config-ini
   - containers
   - game-of-ur
   - generic-lens
   - http-types
   - katip
-  - microlens
+  # - microlens
+  - microlens-platform
   - mtl
   - random
   - stm
