@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Tabletop.Config where
 
 import Data.Typeable
