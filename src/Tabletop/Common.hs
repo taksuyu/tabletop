@@ -12,6 +12,7 @@ import UnliftIO
 
 import Backhand
 
+import Tabletop.Config
 import Tabletop.Message.Ur
 
 newtype Tabletop m a = Tabletop { unTabletop :: ReaderT Env m a }
@@ -46,6 +47,7 @@ instance (MonadIO m) => KatipContext (Tabletop m) where
 
 data Env = Env
   { bhand :: TabletopBackhand
+  , config :: TabletopConfig
   , logNamespace :: Namespace
   , logContext :: LogContexts
   , logEnv :: LogEnv

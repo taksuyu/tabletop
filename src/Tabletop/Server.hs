@@ -7,8 +7,10 @@ import Network.Wai.Handler.Warp
 import System.IO
 
 import Tabletop.Common
+import Tabletop.Config
 import Tabletop.Socket
 
+-- TODO: Everything should run within Katip for proper logging.
 startTabletop :: IO ()
 startTabletop = do
   ttBackhand <- newTabletopBackhand
@@ -16,15 +18,10 @@ startTabletop = do
   let makeLogEnv = registerScribe "stdout" handleScribe defaultScribeSettings
         =<< initLogEnv "Tabletop" "product"
   bracket makeLogEnv closeScribes $ \le -> do
-    let initialNamespace = "main"
-    runReaderT (unTabletop tabletop) (Env ttBackhand initialNamespace mempty le)
-      >>= runSettings settings
+    let ns = "Server"
+    ttConfig <- runKatipContextT le () ns $ readTabletopConfig "tabletop-config.ini"
+    runReaderT (unTabletop tabletop) (Env ttBackhand ttConfig ns mempty le)
+      >>= runSettings (setPort (_cfPort ttConfig) defaultSettings)
 
-settings :: Settings
-settings =
-  let port = 3000 in
-  setPort port
-  . setBeforeMainLoop
-    ( hPutStrLn stderr
-      ( "listening on port " ++ show port ++ "..." ))
-  $ defaultSettings
+settings :: Int -> Settings
+settings port = setPort port $ defaultSettings

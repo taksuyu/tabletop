@@ -36,6 +36,8 @@ dependencies:
   - bytestring
   - config-ini
   - containers
+  - directory
+  - filepath
   - game-of-ur
   - generic-lens
   - http-types
