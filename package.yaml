@@ -40,7 +40,6 @@ dependencies:
   - generic-lens
   - http-types
   - katip
-  # - microlens
   - microlens-platform
   - mtl
   - random

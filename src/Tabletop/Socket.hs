@@ -47,14 +47,14 @@ tabletop = do
 urGameHandler :: PendingConnection -> Tabletop IO ()
 urGameHandler pconn = do
   conn <- liftIO $ acceptRequest pconn
-  Env { bhand = TabletopBackhand { urChannelMap } } <- ask
+  Env { bhand = TabletopBackhand { urChannels } } <- ask
   client <- liftIO $ newDefaultClient @UrTabletopResponse
   channels <- newTVarIO []
   thread <- forkFinally
     (messageSender client conn)
     $ \ _ -> liftIO $ do
       chans <- atomically $ readTVar channels
-      mapM_ (leaveChannel urChannelMap client) chans
+      mapM_ (leaveChannel urChannels client) chans
   liftIO $ forkPingThread conn 30
   readConnection thread $ loopRetrieveData channels client thread conn
   where
@@ -65,7 +65,7 @@ urGameHandler pconn = do
 
     loopRetrieveData :: TVar [UUID] -> Client UrTabletopResponse -> ThreadId -> Connection -> Tabletop IO ()
     loopRetrieveData channels client@Client{ unique } thread conn = do
-      Env { bhand = TabletopBackhand { urChannelMap } } <- ask
+      Env { bhand = TabletopBackhand { urChannels } } <- ask
       bstring <- liftIO $ receiveData conn
       case decode' @UrTabletopMessage bstring of
         Just msg ->
@@ -78,7 +78,7 @@ urGameHandler pconn = do
                     >>= liftIO . sendTextData conn . encode @UrTabletopResponse . SystemResponse
             ServiceMessage uuid service message -> do
               $(logTM) InfoS "Got ServiceMessage"
-              channelExists <- liftIO $ isChannelPresent urChannelMap uuid
+              channelExists <- liftIO $ isChannelPresent urChannels uuid
               channelAlreadyJoined <- atomically $ do
                 l <- readTVar channels
                 if uuid `elem` l
@@ -87,9 +87,9 @@ urGameHandler pconn = do
               if channelExists && not channelAlreadyJoined
                 then liftIO $ void . atomically $ do
                   modifyTVar channels (uuid :)
-                  joinChannel client uuid urChannelMap
+                  joinChannel client uuid urChannels
                 else pure ()
-              liftIO $ sendMessage urChannelMap (ConnectionData uuid service (Message unique message))
+              liftIO $ sendMessage urChannels (ConnectionData uuid service (Message unique message))
                 >>= \case
                   Left err ->
                     -- FIXME: We could send a much better error message

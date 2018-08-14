@@ -2,7 +2,7 @@ module Tabletop.Server where
 
 import Control.Exception
 import Control.Monad.Reader
-import Katip as K
+import Katip
 import Network.Wai.Handler.Warp
 import System.IO
 

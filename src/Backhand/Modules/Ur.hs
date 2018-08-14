@@ -157,20 +157,20 @@ currentPlayer u Game{ players, board = Board{ turn } } =
 
 urGameChannel :: Tabletop IO ChannelInfo
 urGameChannel = do
-  Env { bhand = TabletopBackhand { urChannelMap }, logEnv, logContext, logNamespace } <- ask
+  Env { bhand = TabletopBackhand { urChannels }, logEnv, logContext, logNamespace } <- ask
   chanInfo@ChannelInfo { channelUUID } <- do
     (uuid, channel@Channel{ services, clients }) <- liftIO $ newChannel
     (moduleText, unagi) <- liftIO $ newService "UrService"
     atomically $ do
       SM.insert (inChan unagi) moduleText (unServices services)
-      addChannel uuid channel urChannelMap
+      addChannel uuid channel urChannels
 
     timerChan <- newChan
     game <- liftIO $ (newTVarIO . Game Map.empty) =<< newBoard
     void . liftIO . runKatipContextT logEnv logContext logNamespace $ forkFinally
       (race (timer timerChan)
         (runReaderT urGameService (UrGameEnv timerChan (outChan unagi) clients game)))
-      (\_ -> atomically $ SM.delete uuid (unChannels urChannelMap))
+      (\_ -> atomically $ SM.delete uuid (unChannels urChannels))
     pure $ ChannelInfo uuid [moduleText]
   $(logTM) InfoS $ "Started game session: " `mappend` ls (U.toText channelUUID)
   pure chanInfo
