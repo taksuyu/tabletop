@@ -1,9 +1,10 @@
-resolver: lts-10.5
+resolver: lts-12.6
 
 packages:
   - .
 
 extra-deps:
+  - katip-0.6.0.0
   - unagi-chan-0.4.0.0
 
   - git: https://github.com/quietspace/backhand.git
@@ -12,7 +13,3 @@ extra-deps:
       - backhand
   - git: https://github.com/taksuyu/game-of-ur.git
     commit: 21e49688b0cfd60cc732aa3849546b6a3a3543fa
-  - git: https://github.com/Soostone/katip.git
-    commit: c14b93cc3697baed608395e7a5aef0c78fb45666
-    subdirs:
-      - katip
