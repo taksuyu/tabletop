@@ -9,7 +9,6 @@ import qualified Data.Text as T
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 
-import Data.Word
 import Katip
 import Lens.Micro.Platform
 import UnliftIO
@@ -18,6 +17,26 @@ import Backhand
 
 import Tabletop.Config
 import Tabletop.Message.Ur
+
+data TMessager a = TMessager
+  { unique :: Unique
+  , sessionId :: BS.ByteString
+  , message :: a
+  }
+
+data TabletopBackhand = TabletopBackhand
+  { urChannels :: Channels T.Text (TMessager UrMessage) UrTabletopResponse
+  }
+
+data Env = Env
+  { bhand :: TabletopBackhand
+  , config :: TabletopConfig
+  , _logNamespace :: Namespace
+  , _logContext :: LogContexts
+  , _logEnv :: LogEnv
+  }
+
+makeLenses ''Env
 
 newtype Tabletop m a = Tabletop { unTabletop :: ReaderT Env m a}
   deriving (Functor, Applicative, Monad, MonadIO)
@@ -48,16 +67,3 @@ instance (MonadIO m) => KatipContext (Tabletop m) where
 
   localKatipNamespace f (Tabletop m) =
     Tabletop (local (over logNamespace f) m)
-
-data Env = Env
-  { bhand :: TabletopBackhand
-  , config :: TabletopConfig
-  , logNamespace :: Namespace
-  , logContext :: LogContexts
-  , logEnv :: LogEnv
-  }
-
--- FIXME: Use a proper type for the Channels
-data TabletopBackhand = TabletopBackhand
-  { urChannels :: Channels T.Text (Message UrMessage) UrTabletopResponse
-  }
