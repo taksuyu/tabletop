@@ -16,7 +16,7 @@ jobs:
           name: Restore Cached Dependencies
           keys:
             - stack-v2-ghc-8.4.3-{{ .Branch }}-{{ checksum "stack.yaml" }}
-            - stack-v2-ghc-8.4.3-{{ .Blanch }}-
+            - stack-v2-ghc-8.4.3-{{ .Branch }}-
             - stack-v2-ghc-8.4.3-
       - run:
           name: Resolve/Update Dependencies
