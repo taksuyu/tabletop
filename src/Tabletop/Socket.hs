@@ -30,7 +30,7 @@ tabletop = do
           case requestPath $ pendingRequest pendingConnection of
             "/games/ur" -> flip runReaderT env . unTabletop $ do
               $(logTM) DebugS "Detected Ur WebSocket connection"
-              sessionConn <- checkSession request pendingConnection
+              sessionConn <- checkSession _sessionStorage request pendingConnection
               urGameHandler sessionConn
             _ -> rejectRequest pendingConnection "Not a valid path."
 
@@ -48,7 +48,7 @@ urGameHandler SessionConn{ sessionId, connection } = do
     (messageSender client connection)
     $ \ _ -> liftIO $ do
       chans <- atomically $ readTVar channels
-      mapM_ (leaveChannel urChannels client) chans
+      mapM_ (leaveChannel (env ^. bhand . urChannels) client) chans
 
   readFromConnection thread $ loopRetrieveData channels client thread
   where
@@ -57,7 +57,7 @@ urGameHandler SessionConn{ sessionId, connection } = do
     loopRetrieveData :: TVar [UUID] -> Client UrTabletopResponse -> ThreadId -> Tabletop IO ()
     loopRetrieveData channels client@Client{ unique } thread = do
       env <- ask
-      let channelMap = env ^. urChannels
+      let channelMap = env ^. bhand . urChannels
 
       bstring <- liftIO $ receiveData connection
       case decode' @UrTabletopMessage bstring of
@@ -71,7 +71,7 @@ urGameHandler SessionConn{ sessionId, connection } = do
                     >>= liftIO . sendTextData connection . encode @UrTabletopResponse . SystemResponse
             ServiceMessage uuid service message -> do
               $(logTM) DebugS "Got ServiceMessage"
-              channelExists <- liftIO $ isChannelPresent urChannels uuid
+              channelExists <- liftIO $ isChannelPresent channelMap uuid
               channelAlreadyJoined <- atomically $ do
                 l <- readTVar channels
                 if uuid `elem` l
@@ -80,9 +80,9 @@ urGameHandler SessionConn{ sessionId, connection } = do
               if channelExists && not channelAlreadyJoined
                 then liftIO $ void . atomically $ do
                   modifyTVar channels (uuid :)
-                  joinChannel client uuid urChannels
+                  joinChannel client uuid channelMap
                 else pure ()
-              liftIO $ sendMessage urChannels (ConnectionData uuid service (Message unique message))
+              liftIO $ sendMessage channelMap (ConnectionData uuid service (TMessager unique sessionId message))
                 >>= \case
                   Left err ->
                     -- FIXME: We could send a much better error message

@@ -8,10 +8,11 @@ import qualified Data.Text as T
 
 import Control.Monad.IO.Class
 import Control.Monad.Reader
-
 import Katip
 import Lens.Micro.Platform
 import UnliftIO
+import Web.ServerSession.Backend.Persistent
+import Web.ServerSession.Core
 
 import Backhand
 
@@ -25,12 +26,19 @@ data TMessager a = TMessager
   }
 
 data TabletopBackhand = TabletopBackhand
-  { urChannels :: Channels T.Text (TMessager UrMessage) UrTabletopResponse
+  { _urChannels :: Channels T.Text (TMessager UrMessage) UrTabletopResponse
   }
 
+makeLenses ''TabletopBackhand
+
+newTabletopBackhand :: MonadIO m => m TabletopBackhand
+newTabletopBackhand =
+  atomically $ fmap TabletopBackhand newChannels
+
 data Env = Env
-  { bhand :: TabletopBackhand
-  , config :: TabletopConfig
+  { _bhand :: TabletopBackhand
+  , _config :: TabletopConfig
+  , _sessionStorage :: SqlStorage SessionMap
   , _logNamespace :: Namespace
   , _logContext :: LogContexts
   , _logEnv :: LogEnv

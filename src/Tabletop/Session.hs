@@ -1,102 +1,88 @@
+{-# LANGUAGE FunctionalDependencies, MultiParamTypeClasses #-}
+
 module Tabletop.Session where
 
 import qualified Data.ByteString as BS
 import qualified Data.List as L
 import qualified Data.Text.Conversions as TC
+import qualified Data.UUID as U
 import qualified Network.Wai as Wai
 import qualified Network.WebSockets as WS
 import qualified Web.Cookie as C
 
 import Control.Monad.Reader
 import Data.Time.Clock
-import Database.Redis
 import Katip
 import Lens.Micro.Platform
 import Network.HTTP.Date
 import Network.HTTP.Types.Header
-import System.Exit
+import System.Random
 import UnliftIO
 import Web.PathPieces (toPathPiece)
-import Web.ServerSession.Backend.Redis
+import Web.ServerSession.Backend.Persistent
 import Web.ServerSession.Core
 import Web.ServerSession.Core.Internal (State(generator), generateSessionId)
-
-import Tabletop.Common
 
 data SessionConn = SessionConn
   { sessionId :: BS.ByteString
   , connection :: WS.Connection
   }
 
-checkSession :: MonadUnliftIO m => Wai.Request -> WS.PendingConnection -> Tabletop m SessionConn
-checkSession request pendingConnection = do
+checkSession
+  :: (KatipContext m, MonadReader e m, MonadUnliftIO m)
+  => (e -> SqlStorage SessionMap) -> Wai.Request -> WS.PendingConnection -> m SessionConn
+checkSession getStorage request pendingConnection = do
   env <- ask
 
-  redisConnection <- initRedis
-  $(logTM) DebugS "Redis connection started"
-
-  -- TODO: We currently only use sessions for rejoining games, but we should
-  -- consider timeouts in the future.
-  let redisStorage = RedisStorage @SessionMap redisConnection Nothing Nothing
-  state <- liftIO $ createState redisStorage
+  let sqlStorage = getStorage env
+  state <- liftIO $ createState sqlStorage
 
   (sessionData, saveSessionToken) <- liftIO $
-    loadSession @(RedisStorage SessionMap) state $ getCookieValue state request
+    loadSession @(SqlStorage SessionMap) state $ getCookieValue state request
   mSession <- liftIO $
     saveSession state saveSessionToken sessionData
 
   case mSession of
-    Just session@Session{ sessionAuthId = Just authId } -> do
-      connection <- liftIO
-        . WS.acceptRequestWith pendingConnection
-        $ addSession state session
-      pure (SessionConn authId connection)
+    Just session@Session{ sessionAuthId = Just authId } ->
+      fmap (SessionConn authId) $
+        liftIO . WS.acceptRequestWith pendingConnection $
+          addSession state session
 
     _ -> do
-      now <- liftIO $ getCurrentTime
-
-      -- We continue to increment the counter till we come across a session that
-      -- isn't currently used. Normally reused session counter ids wouldn't be a
-      -- problem, but redis is persistent while tabletop currently is not.
-      let increment = atomically $ do
-            n <- readTVar (env ^. sessionCounter)
-            modifyTVar (env ^. sessionCounter) (+ 1)
-            pure (TC.toText $ show n)
-
-      sessionId <- liftIO $ generateSessionId (generator state)
-
-      let checkAuthId sessCount =
-            let dSession = decomposeSession sessCount sessionData
-            in case dsAuthId $ dSession of
-               Nothing -> pure $ Session @SessionMap
-                 sessionId
-                 (Just . TC.unUTF8 $ TC.convertText sessCount)
-                 (dsDecomposed dSession)
-                 now
-                 now
-               Just _ -> do
-                 n <- increment
-                 checkAuthId n
-
-      session@Session{ sessionAuthId = Just authId } <- do
-        n <- increment
-        checkAuthId n
+      session@Session{ sessionAuthId = Just authId } <-
+        createSqlSession state sessionData
 
       connection <- liftIO $ do
-        runTransactionM redisStorage $ insertSession redisStorage session
-        WS.acceptRequestWith pendingConnection
-          $ addSession state session
+        runTransactionM sqlStorage $ insertSession sqlStorage session
+        WS.acceptRequestWith pendingConnection $
+          addSession state session
 
       pure (SessionConn authId connection)
 
--- | Connect to Redis so that we can store our sessions independent of the
--- application.
---
--- TODO: Take Redis connection info from a config file
-initRedis :: MonadUnliftIO m => Tabletop m Connection
-initRedis = withException (liftIO $ checkedConnect defaultConnectInfo) $ \e -> do
-  $(logTM) ErrorS . ls $ displayException @SomeException e
-  liftIO $ exitFailure
+createSqlSession
+  :: MonadIO m
+  => State (SqlStorage SessionMap) -> SessionMap
+  -> m (Session SessionMap)
+createSqlSession state sessionData = do
+  uuid <- fmap U.toText (liftIO randomIO)
+
+  -- NOTE: May not make much of a difference, but trying to force
+  -- strictness of dSession so that the time we get is before
+  -- evaluation of the time.
+  let dSession = decomposeSession uuid sessionData
+  time <- dSession `seq` liftIO getCurrentTime
+
+  case dsAuthId $ dSession of
+    Nothing -> do
+      sessionId <- liftIO $ generateSessionId (generator state)
+      pure $ Session
+        sessionId
+        (Just . TC.unUTF8 $ TC.convertText uuid)
+        (dsDecomposed dSession)
+        time
+        time
+    Just _ ->
+      createSqlSession state sessionData
 
 -- FIXME: We need tests that makes sure this session is properly made
 addSession :: State sto -> Session sess -> WS.AcceptRequest

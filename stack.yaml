@@ -5,7 +5,7 @@ packages:
 
 extra-deps:
   - katip-0.6.0.0
-  - serversession-backend-redis-1.0.3
+  - serversession-backend-persistent-1.0.4
   - unagi-chan-0.4.0.0
 
   - git: https://github.com/quietspace/backhand.git

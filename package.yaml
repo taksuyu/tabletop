@@ -42,16 +42,20 @@ dependencies:
   - filepath
   - game-of-ur
   - generic-lens
-  - hedis
   - http-date
   - http-types
   - katip
   - microlens-platform
+  - monad-logger
   - mtl
   - path-pieces
+  - persistent
+  - persistent-sqlite
+  - persistent-template
   - random
+  - resource-pool
   - serversession
-  - serversession-backend-redis
+  - serversession-backend-persistent
   - stm
   - stm-containers
   - text
@@ -77,7 +81,7 @@ executables:
     other-modules: []
 
 tests:
-  tabletop-test:
+  tabletop-hedgehog:
     main: Test.hs
     source-dirs: test
     dependencies:
