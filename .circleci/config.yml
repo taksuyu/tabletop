@@ -2,24 +2,33 @@ version: 2
 jobs:
   build:
     docker:
-      - image: ubuntu:17.10
+      - image: fpco/stack-build
     steps:
-      - run: locale
-      - run: apt update && apt install -y wget
-      - run: wget -qO- https://get.haskellstack.org/ | sh
-      - run: stack --version
-        # TODO: We can cache git objects in the future.
+      - run:
+          name: System Information
+          command: locale
+          command: stack --version
+
+      # TODO: We can cache git objects in the future.
       - checkout
 
       - restore_cache:
+          name: Restore Cached Dependencies
           keys:
-            - stack-v1-ghc-8.4.3-{{ arch }}-{{ .Branch }}-{{ .Revision }}
-            - stack-v1-ghc-8.4.3-{{ arch }}-{{ .Branch }}
-            - stack-v1-ghc-8.4.3-{{ arch }}
-
-      - run: stack build --fast --pedantic --haddock --test
-
-      - save_cache:
-          key: stack-v1-ghc-8.4.3-{{ arch }}-{{ .Branch }}-{{ .Revision }}
+            - stack-v2-ghc-8.4.3-{{ .Branch }}-{{ checksum "stack.yaml" }}
+            - stack-v2-ghc-8.4.3-{{ .Blanch }}-
+            - stack-v2-ghc-8.4.3-
+      - run:
+          name: Resolve/Update Dependencies
+          command: stack setup
+          command: stack build --test --dependencies-only
+      - save-cache:
+          name: Cache Dependencies
+          key: stack-v2-ghc-8.4.3-{{ .Branch }}-{{ checksum "stack.yaml" }}
           paths:
-            - "~/.stack"
+            - ~/.stack
+            - ./.stack-work
+
+      - run:
+          name: Build/Test tabletop
+          command: stack build --test --pedantic
