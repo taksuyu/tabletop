@@ -15,7 +15,8 @@ jobs:
       - restore_cache:
           name: Restore Cached Dependencies
           keys:
-            - stack-v2-ghc-8.4.3-{{ .Branch }}-{{ checksum "stack.yaml" }}
+            - stack-v2-ghc-8.4.3-{{ .Branch }}-{{ checksum "stack.yaml" }}-{{ checksum "package.yaml" }}
+            - stack-v2-ghc-8.4.3-{{ .Branch }}-{{ checksum "stack.yaml" }}-
             - stack-v2-ghc-8.4.3-{{ .Branch }}-
             - stack-v2-ghc-8.4.3-
       - run:
@@ -24,7 +25,7 @@ jobs:
           command: stack build --test --dependencies-only
       - save-cache:
           name: Cache Dependencies
-          key: stack-v2-ghc-8.4.3-{{ .Branch }}-{{ checksum "stack.yaml" }}
+          key: stack-v2-ghc-8.4.3-{{ .Branch }}-{{ checksum "stack.yaml" }}-{{ checksum "package.yaml" }}
           paths:
             - ~/.stack
             - ./.stack-work
