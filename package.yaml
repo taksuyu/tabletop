@@ -39,6 +39,7 @@ dependencies:
   - containers
   - cookie
   - directory
+  - fast-logger
   - filepath
   - game-of-ur
   - generic-lens
@@ -48,6 +49,7 @@ dependencies:
   - microlens-platform
   - monad-logger
   - mtl
+  - optparse-applicative
   - path-pieces
   - persistent
   - persistent-sqlite

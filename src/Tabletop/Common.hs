@@ -37,7 +37,7 @@ newTabletopBackhand =
 
 data Env = Env
   { _bhand :: TabletopBackhand
-  , _config :: TabletopConfig
+  , _config :: Config
   , _sessionStorage :: SqlStorage SessionMap
   , _logNamespace :: Namespace
   , _logContext :: LogContexts

@@ -2,13 +2,15 @@
 
 module Tabletop.Server where
 
+import qualified Data.Text as T
+
 import Control.Monad.Logger
 import Control.Monad.Reader
-import Data.Pool
 import Data.Proxy
 import Database.Persist.Sqlite
 import Database.Persist.TH
 import Katip
+import Katip.Instances.MonadLogger ()
 import Network.Wai.Handler.Warp
 import System.IO
 import UnliftIO
@@ -17,20 +19,19 @@ import Web.ServerSession.Core
 
 import Tabletop.Common
 import Tabletop.Config
+import Tabletop.Parser
 import Tabletop.Socket
 
-mkMigrate "migrateAll" (serverSessionDefs (Proxy :: Proxy SessionMap))
+mkMigrate "migrateAll" (serverSessionDefs (Proxy @SessionMap))
 
-setupDatabase :: (MonadLogger m, MonadUnliftIO m) => m (SqlStorage SessionMap)
-setupDatabase = do
-  connectionPool <- createSqlitePool "sessions.sqlite3" 10 :: (MonadLogger m, MonadUnliftIO m) => m (Pool SqlBackend)
+setupDatabase :: (MonadLogger m, MonadUnliftIO m) => T.Text -> m (SqlStorage SessionMap)
+setupDatabase sqlitePath' = do
+  connectionPool <- createSqlitePool sqlitePath' 10
   runSqlPool (runMigration migrateAll) connectionPool
   pure (SqlStorage connectionPool)
 
 startTabletop :: IO ()
 startTabletop = do
-  ttSessionStorage <- runNoLoggingT setupDatabase
-
   handleScribe <- mkHandleScribe ColorIfTerminal stdout InfoS V2
   let makeLogEnv = registerScribe "stdout" handleScribe defaultScribeSettings
         =<< initLogEnv "Tabletop" "product"
@@ -38,10 +39,13 @@ startTabletop = do
     let ns = "Server"
     (env, port) <- runKatipContextT le () ns $ do
       ttBackhand <- newTabletopBackhand
-      ttConfig <- readTabletopConfig "tabletop-config.ini"
-      pure $ (Env ttBackhand ttConfig ttSessionStorage, _cfPort ttConfig)
+      ttOptions <- parseOptions
+      ttConfig <- readConfig (_configPath ttOptions)
+      ttSessionStorage <- setupDatabase (maybe (_cfSqlitePath ttConfig) id (_sqlitePath ttOptions))
+      pure $ (Env ttBackhand ttConfig ttSessionStorage, _cfGeneralPort ttConfig)
     runReaderT (unTabletop tabletop) (env ns mempty le)
       >>= runSettings (settings port)
 
 settings :: Int -> Settings
-settings port = setPort port $ defaultSettings
+settings port =
+  setPort port $ defaultSettings

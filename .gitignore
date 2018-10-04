@@ -1,5 +1,4 @@
 .stack-work
 *.cabal
-sessions.sqlite3
-tabletop-config.ini
+*sqlite3*
 TAGS
